@@ -7,33 +7,28 @@
 #include <unordered_map>
 #include <stack>
 #include <random>
+#include <windows.h>
+#include "stack_agc.hpp"
 
-template<typename T>
-class stack_agc : public std::stack<T> {
-public:
-	auto& gc() {
-		return this->c;
-	}
-};
+std::vector<std::pair<HMODULE,std::string> > extensionHMods;
+typedef int (*extf)(size_t&,std::string&,size_t&,unsigned&,std::string&,std::vector<unsigned>&,stack_agc<unsigned>&,std::uniform_int_distribution<unsigned>&);
 
-std::string read_code_file(std::string filename) {
+std::string read_code_file(const std::string& filename) {
 	std::string program;
 	std::string back_s;
-	for (size_t i = 0; i < filename.size(); i++) {
-		if (filename[i] == '.') {
-			back_s = filename.substr(i);
-		}
+	size_t dot_pos = filename.find_last_of('.');
+	if (dot_pos != std::string::npos) {
+		back_s = filename.substr(dot_pos);
 	}
-	if (back_s != ".blc") throw std::runtime_error("file type error : not .blc");
-	std::ifstream in(filename);
-	if (!in.is_open()) {
-		throw std::runtime_error("failed to open file: " + filename);
-	}
-	while (!in.eof()) {
-		std::string str;
-		in >> str;
-		program += str;
-	}
+	if (back_s != ".blc") throw std::runtime_error("File type error : not .blc");
+	
+	std::ifstream in(filename, std::ios::binary);
+	if (!in.is_open())
+		throw std::runtime_error("Failed to open file: " + filename);
+	in.seekg(0, std::ios::end);
+	program.resize(in.tellg());
+	in.seekg(0, std::ios::beg);
+	in.read(&program[0], program.size());
 	in.close();
 	return program;
 }
@@ -167,7 +162,23 @@ int run_program(std::string& program, bool nV = false) {
 				memory[ptr] = dist(gen);
 				break;
 			default:
-				skipPrint = true;
+				for(auto& hm:extensionHMods)
+				{
+					extf extfunc = (extf)GetProcAddress(hm.first,"analyzeCommand");
+					if(!extfunc)
+					{
+						throw std::runtime_error("Extension "+hm.second + " is not a standard interpreter extension(analyzeCommand() function error)");
+					} else {
+						int rtc = extfunc(i,program,ptr,exitCode,logOutputBuffer,memory,stack_mem,dist);
+						if(rtc==1){
+							skipPrint=false;
+							break;
+						} else {
+							skipPrint=true;
+							break;
+						}
+					}
+				}
 				break;
 		}
 		if (nV && !skipPrint) {
@@ -194,7 +205,8 @@ HELP_INFO:
 		          << "Usage:\n"
 		          << "    -h : Get this help\n"
 		          << "    [FILENAME(.blc)] : Run Code\n"
-		          << "    -d : Run and print the memory array \n         after every commands (expect for ';',',',':','.')\n";
+		          << "    -d : Run and print the memory array \n         after every commands (expect for ';',',',':','.')\n"
+				  << "    -e [FILENAME(.dll)] : Add a extension\n";
 		return 0;
 	}
 	bool debugMode = false;
@@ -205,6 +217,19 @@ HELP_INFO:
 			goto HELP_INFO;
 		} else if (arg == "-d") {
 			debugMode = true;
+		} else if (arg == "-e") {
+			if(i+1==argc)
+			{
+				throw std::runtime_error("Where is extension file name?");
+			} else {
+				std::string extensionFilename = argv[i+1];
+				HMODULE hLib = LoadLibraryA(extensionFilename.c_str());
+				if(!hLib) {
+					throw std::runtime_error("Failed while loading extension named " + extensionFilename);
+				}
+				extensionHMods.push_back(std::make_pair(hLib,extensionFilename));
+				i++;
+			}
 		} else if (filename.empty()) {
 			filename = arg;
 		} else {
@@ -213,14 +238,14 @@ HELP_INFO:
 		}
 	}
 	if (filename.empty()) {
-		std::cerr << "Error: No filename provided!" << std::endl;
+		std::cerr << "No filename provided!" << std::endl;
 		return 1;
 	}
 	try {
 		std::string program = read_code_file(filename);
 		return run_program(program, debugMode);
 	} catch (const std::runtime_error& e) {
-		std::cerr << "Runtime Error: " << e.what() << std::endl;
+		std::cerr << "Error: " << e.what() << std::endl;
 		return 1;
 	} catch (...) {
 		std::cerr << "Unknown Error!" << std::endl;
