@@ -42,3 +42,17 @@ Brainlike is a superset of brainfuck.You can use extra grammars to make your cod
 ### Differences in details
 
 The memory's size is **NOT** fixed.The interpreter should automaticly allocate for the running program.
+
+## Extensions
+
+Extensions can extend the Brainlike Interpreter, enabling it to interpret additional instructions.
+
+### Extension Usage
+
+Refer to the -h option in the command line for details.
+
+### Extension Development
+
+You need to develop a Dynamic Link Library (DLL) (Windows-only for the time being) that contains the function `int analyzeCommand(size_t&,std::string&,size_t&,unsigned&,std::string&,std::vector<unsigned>&,stack_agc<unsigned>&,std::uniform_int_distribution<unsigned>&)`.
+During runtime, the program will provide the variables you may need in the order of `i/*program ptr*/,program,ptr,exitCode,logOutputBuffer,memory,stack_mem,dist`.
+When the parsing function returns `1`, the output will not be skipped in debug mode; otherwise, the output will be skipped.
