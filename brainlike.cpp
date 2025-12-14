@@ -159,7 +159,7 @@ int run_program(std::string& program, size_t bl, bool nV = false, bool bpD = fal
 				}
 				break;
 			case '_':
-				memory[ptr] = dist(gen);
+				memory[ptr] = dist(gen) % 256;
 				break;
 			default:
 				for (auto& hm : extensionHMods) {
@@ -268,3 +268,4 @@ HELP_INFO:
 		return 1;
 	}
 }
+
