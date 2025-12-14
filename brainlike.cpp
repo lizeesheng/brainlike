@@ -1,5 +1,5 @@
-// Brainlike Interpreter Version 1100
-// -DVERSION=1100
+// Brainlike Interpreter Version 1150
+// -DVERSION=1150
 #include <iostream>
 #include <vector>
 #include <fstream>
@@ -10,8 +10,8 @@
 #include <windows.h>
 #include "stack_agc.hpp"
 
-std::vector<std::pair<HMODULE,std::string> > extensionHMods;
-typedef int (*extf)(size_t&,std::string&,size_t&,unsigned&,std::string&,std::vector<unsigned>&,stack_agc<unsigned>&,std::uniform_int_distribution<unsigned>&);
+std::vector<std::pair<HMODULE, std::string> > extensionHMods;
+typedef int (*extf)(size_t&, std::string&, size_t&, unsigned&, std::string&, std::vector<unsigned>&, stack_agc<unsigned>&, std::uniform_int_distribution<unsigned>&);
 
 std::string read_code_file(const std::string& filename) {
 	std::string program;
@@ -21,7 +21,7 @@ std::string read_code_file(const std::string& filename) {
 		back_s = filename.substr(dot_pos);
 	}
 	if (back_s != ".blc") throw std::runtime_error("File type error : not .blc");
-	
+
 	std::ifstream in(filename, std::ios::binary);
 	if (!in.is_open())
 		throw std::runtime_error("Failed to open file: " + filename);
@@ -55,7 +55,7 @@ std::unordered_map<int, int> preprocessBrackets(const std::string& program) {
 	return bracketMap;
 }
 
-int run_program(std::string& program, bool nV = false) {
+int run_program(std::string& program, size_t bl, bool nV = false, bool bpD = false) {
 	std::unordered_map<int, int> bracketMap = preprocessBrackets(program);
 	unsigned exitCode = 0;
 	size_t ptr = 0;
@@ -64,7 +64,7 @@ int run_program(std::string& program, bool nV = false) {
 	std::string logOutputBuffer;
 	std::random_device rd;
 	std::mt19937 gen(std::random_device{}());
-	std::uniform_int_distribution<unsigned> dist(0,(unsigned)(-1));
+	std::uniform_int_distribution<unsigned> dist(0, (unsigned)(-1));
 
 	for (size_t i = 0; i < program.size(); ++i) {
 		bool skipPrint = false;
@@ -162,27 +162,25 @@ int run_program(std::string& program, bool nV = false) {
 				memory[ptr] = dist(gen);
 				break;
 			default:
-				for(auto& hm:extensionHMods)
-				{
-					extf extfunc = (extf)GetProcAddress(hm.first,"analyzeCommand");
-					if(!extfunc)
-					{
-						throw std::runtime_error("Extension "+hm.second + " is not a standard interpreter extension(analyzeCommand() function error)");
+				for (auto& hm : extensionHMods) {
+					extf extfunc = (extf)GetProcAddress(hm.first, "analyzeCommand");
+					if (!extfunc) {
+						throw std::runtime_error("Extension " + hm.second + " is not a standard interpreter extension(analyzeCommand() function error)");
 					} else {
-						int rtc = extfunc(i,program,ptr,exitCode,logOutputBuffer,memory,stack_mem,dist);
-						if(rtc==1){
-							skipPrint=false;
+						int rtc = extfunc(i, program, ptr, exitCode, logOutputBuffer, memory, stack_mem, dist);
+						if (rtc == 1) {
+							skipPrint = false;
 							break;
 						} else {
-							skipPrint=true;
+							skipPrint = true;
 							break;
 						}
 					}
 				}
 				break;
 		}
-		if (nV && !skipPrint) {
-			std::cout << "Memory: ";
+		if ((bpD||nV) && !skipPrint) {
+			std::cout << "\nMemory: ";
 			for (size_t j = 0; j < memory.size(); j++)
 				std::cout << memory[j] << ' ';
 			std::cout << " | Pointer: " << ptr << '\n';
@@ -192,7 +190,15 @@ int run_program(std::string& program, bool nV = false) {
 			}
 			std::cout << '\n';
 		}
-
+		if (bpD && i+1>=bl) {
+			std::cout << "\nBREAK\n";
+			std::cout << "This Command:" << (program[i]==' '?'S':program[i]) << '\n';
+			std::cout << "Next Command:" << (i+1<program.size()?(program[i+1]==' '?'S':program[i+1]):'E') << '\n';
+			std::cout << "Press any key to continue. . .\n";
+			fflush(stdin);
+			getchar();
+			fflush(stdin);
+		}
 	}
 	return exitCode;
 }
@@ -204,30 +210,40 @@ HELP_INFO:
 		          << "    --Feel free in symbols\n"
 		          << "Usage:\n"
 		          << "    -h : Get this help\n"
-		          << "    [FILENAME(.blc)] : Run Code\n"
-		          << "    -d : Run and print the memory array \n         after every commands (expect for ';',',',':','.')\n"
-				  << "    -e [FILENAME(.dll)] : Add a extension\n";
+		          << "    [FILENAME(.blc)] : Run what code\n"
+		          << "    -d : Run and print the memory array \n         after non-I/O commands\n"
+		          << "    -db [BREAK_LOCATION(A number,1-based)] : Break-debugging\n"
+		          << "    -e [FILENAME(.dll)] : Add a extension\n";
 		return 0;
 	}
-	bool debugMode = false;
+	bool debugMode = false, breakDebugMode = false;
+	size_t bl = 0;
 	std::string filename;
-	for (int i = 1; i < argc; ++i) {
+	for (int i = 1; i < argc; i++) {
 		std::string arg = argv[i];
 		if (arg == "-h") {
 			goto HELP_INFO;
 		} else if (arg == "-d") {
 			debugMode = true;
+		} else if (arg == "-db") {
+			breakDebugMode = true;
+			if (i + 1 == argc) {
+				throw std::runtime_error("Where is the break loc?");
+			} else {
+				std::string nt = argv[i + 1];
+				bl = std::stoll(nt);
+				i++;
+			}
 		} else if (arg == "-e") {
-			if(i+1==argc)
-			{
+			if (i + 1 == argc) {
 				throw std::runtime_error("Where is extension file name?");
 			} else {
-				std::string extensionFilename = argv[i+1];
+				std::string extensionFilename = argv[i + 1];
 				HMODULE hLib = LoadLibraryA(extensionFilename.c_str());
-				if(!hLib) {
+				if (!hLib) {
 					throw std::runtime_error("Failed while loading extension named " + extensionFilename);
 				}
-				extensionHMods.push_back(std::make_pair(hLib,extensionFilename));
+				extensionHMods.push_back(std::make_pair(hLib, extensionFilename));
 				i++;
 			}
 		} else if (filename.empty()) {
@@ -243,7 +259,7 @@ HELP_INFO:
 	}
 	try {
 		std::string program = read_code_file(filename);
-		return run_program(program, debugMode);
+		return run_program(program, bl, debugMode, breakDebugMode);
 	} catch (const std::runtime_error& e) {
 		std::cerr << "Error: " << e.what() << std::endl;
 		return 1;
