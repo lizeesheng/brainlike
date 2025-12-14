@@ -35,9 +35,9 @@ Brainlike is a superset of brainfuck.You can use extra grammars to make your cod
 | "   | Log the memory cell at the pointer to a file named `blpg.log`(fixed name,app write in)(as a character) |
 | \   | Push the memory cell at the pointer to the stack and make the memory cell at the pointer equal 0 |
 | /   | Get the top of the stack and free it,then make the memory cell at the pointer equal the value |
-| _   | Set the memory cell at the pointer to a random 32-bit unsigned number |
+| _   | Set the memory cell at the pointer to a random 32-bit unsigned number(max:255) |
 
-###### Latest updated:Interpreter version 1100
+###### Latest updated:Interpreter version 1150
 
 ### Differences in details
 
